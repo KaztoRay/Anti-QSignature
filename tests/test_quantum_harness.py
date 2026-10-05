@@ -60,6 +60,14 @@ class QuantumHarnessTests(unittest.TestCase):
         self.assertEqual(mode, 1)
         self.assertEqual(triggered, 1)
 
+    def test_transaction_sequence_harness_blocks_replay_and_freeze_bypass(self) -> None:
+        checked, hardened_violations, mutant_violations = self.qsharp.eval(
+            "AntiQSignature.RunTransactionSequenceHarness()"
+        )
+        self.assertEqual(checked, 64)
+        self.assertEqual(hardened_violations, 0)
+        self.assertGreater(mutant_violations, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
