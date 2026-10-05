@@ -17,8 +17,12 @@ Q# 양자 위협 분석, Solidity 정적 취약점 검사, 격리된 Foundry/Sli
 - 검색·필터·위험 점수 기반 HTML, JSON, Markdown 및 GitHub SARIF 보고서
 - 이전 보고서 대비 신규·유지·해결 항목 비교 및 CI 심각도 품질 게이트
 - 코드 무결성 attestation registry와 정책 kernel Solidity 예제
+- 실제 실행 가능한 ECDSA + Merkle-Lamport 하이브리드 지갑 프로토타입
+- Q# 트랜잭션 순서 하네스로 Lamport leaf 재사용과 동결 우회 전수검증
 
 > 정적 규칙의 결과는 취약점 확정이 아니라 검토 후보입니다. 실제 배포 전에는 수동 감사와 체인별 PQ verifier 검증이 필요합니다.
+
+`AntiQSmartWallet`의 Lamport 검증은 연구용으로 완전한 검증 경로를 보여주지만 calldata와 가스 비용이 큽니다. 현재 Foundry 측정에서 정상 실행은 약 267만 gas를 사용합니다. 운영 환경에서는 ML-DSA/SLH-DSA 네이티브 모듈 또는 체인 precompile으로 교체하는 것을 전제로 합니다.
 
 ## 설치
 

@@ -91,7 +91,10 @@ RULES = [
     ),
     Rule(
         "AQ008",
-        re.compile(r"\bkeccak256\s*\([^)]*(password|secret|pin|seed)" , re.IGNORECASE),
+        re.compile(
+            r"\bkeccak256\s*\(\s*abi\.encodePacked\s*\(\s*(password|pin|secret|seed)\b",
+            re.IGNORECASE,
+        ),
         "high",
         "Low-entropy secret commitment",
         "A public hash of a human-scale secret can be searched offline and gains a Grover speedup.",
