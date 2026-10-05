@@ -1,0 +1,45 @@
+name: antiq-security
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  qsharp-and-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install Anti-QSignature and QDK
+        run: pip install -e .
+      - name: Run Python and Q# harness tests
+        run: python -m unittest discover -s tests -v
+      - name: Run self security scan
+        run: antiq . --qsharp required --fuzz-cases 1000 --fail-on high
+      - uses: actions/upload-artifact@v4
+        with:
+          name: antiq-security-reports
+          path: reports/
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: reports/antiq-report.sarif
+
+  solidity-fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Run Foundry fuzz tests
+        run: forge test -vv

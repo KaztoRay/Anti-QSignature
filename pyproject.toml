@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anti-qsignature"
-version = "0.1.0"
+version = "0.2.0"
 description = "Q#-driven quantum risk, Solidity vulnerability, and wallet policy scanner"
 requires-python = ">=3.10"
 dependencies = ["qdk>=1.31,<2"]
@@ -14,4 +14,3 @@ antiq = "anti_qsignature.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["python"]
-

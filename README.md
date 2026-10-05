@@ -10,8 +10,12 @@ Q# 양자 위협 분석, Solidity 정적 취약점 검사, 격리된 Foundry/Sli
 - 소스 전체의 재현 가능한 manifest hash 생성
 - nonce 재사용, 미승인 호출, PQ 승인 누락, 고액 guardian 우회, codehash 변조 정책 퍼징
 - Q# Grover probe 실행 및 256비트 탐색 공간의 양자 보안 요약
+- Q# 지갑 정책 128상태, 업그레이드 정책 256상태, 서명 도메인 64상태 전수 검증
+- Q# hardened/mutant differential harness와 Grover 반례 증폭 검증
+- 7/12/16 큐비트 공격 라운드별 Quantum Resource Estimator 비교
 - 선택한 프로젝트를 임시 디렉터리로 복사한 뒤 Forge fuzz와 Slither 실행
-- JSON 및 HTML 통합 보고서
+- 검색·필터·위험 점수 기반 HTML, JSON, Markdown 및 GitHub SARIF 보고서
+- 이전 보고서 대비 신규·유지·해결 항목 비교 및 CI 심각도 품질 게이트
 - 코드 무결성 attestation registry와 정책 kernel Solidity 예제
 
 > 정적 규칙의 결과는 취약점 확정이 아니라 검토 후보입니다. 실제 배포 전에는 수동 감사와 체인별 PQ verifier 검증이 필요합니다.
@@ -50,13 +54,25 @@ Forge와 Slither까지 실행하려면 다음 옵션을 사용합니다. 원본 
 .venv/bin/antiq /absolute/path/to/project \
   --external-tools \
   --fuzz-cases 2000 \
-  --qsharp required
+  --qsharp required \
+  --fail-on high
+```
+
+이전 결과와 비교하려면 기존 JSON을 baseline으로 지정합니다.
+
+```bash
+.venv/bin/antiq /absolute/path/to/project \
+  --baseline reports/previous.json \
+  --exclude 'lib/**' \
+  --exclude 'vendor/**'
 ```
 
 결과는 기본적으로 다음 위치에 생성됩니다.
 
 - `reports/antiq-report.json`
 - `reports/antiq-report.html`
+- `reports/antiq-report.md`
+- `reports/antiq-report.sarif`
 
 ## 개발 검증
 
