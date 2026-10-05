@@ -15,6 +15,7 @@ def write_json(report: ScanReport, output: Path) -> None:
 def write_sarif(report: ScanReport, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     level = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "note"}
+    security_score = {"critical": "9.8", "high": "8.0", "medium": "5.5", "low": "2.5", "info": "0.0"}
     rules: dict[str, dict[str, object]] = {}
     results: list[dict[str, object]] = []
     for item in report.findings:
@@ -23,7 +24,7 @@ def write_sarif(report: ScanReport, output: Path) -> None:
             "name": item.title,
             "shortDescription": {"text": item.message},
             "help": {"text": item.remediation},
-            "properties": {"security-severity": item.severity, "source": item.source},
+            "properties": {"security-severity": security_score.get(item.severity, "0.0"), "source": item.source, "tags": ["security", item.category]},
         }
         results.append(
             {
