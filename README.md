@@ -71,6 +71,18 @@ Forge와 Slither까지 실행하려면 다음 옵션을 사용합니다. 원본 
   --exclude 'vendor/**'
 ```
 
+팀 설정은 프로젝트 루트의 `.antiq.toml`에 저장할 수 있습니다. `.antiq.toml.example`을 복사한 뒤 제외 경로, 수용 규칙, fuzz 횟수와 CI 실패 기준을 조정합니다. CLI 옵션은 설정 파일보다 우선합니다.
+
+```toml
+[scan]
+exclude = ["lib/**", "vendor/**"]
+ignore_rules = ["AQ005"]
+fail_on = "high"
+fuzz_cases = 2000
+qsharp = "required"
+external_tools = true
+```
+
 결과는 기본적으로 다음 위치에 생성됩니다.
 
 - `reports/antiq-report.json`

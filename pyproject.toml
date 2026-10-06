@@ -7,7 +7,10 @@ name = "anti-qsignature"
 version = "0.2.0"
 description = "Q#-driven quantum risk, Solidity vulnerability, and wallet policy scanner"
 requires-python = ">=3.10"
-dependencies = ["qdk>=1.31,<2"]
+dependencies = [
+  "qdk>=1.31,<2",
+  "tomli>=2; python_version < '3.11'",
+]
 
 [project.scripts]
 antiq = "anti_qsignature.cli:main"

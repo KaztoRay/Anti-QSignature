@@ -1,0 +1,11 @@
+[scan]
+# Paths are relative to the selected project root.
+exclude = ["lib/**", "vendor/**", "node_modules/**"]
+
+# Accepted findings remain documented here instead of being hidden in code.
+ignore_rules = ["AQ005"]
+
+fail_on = "high"
+fuzz_cases = 2000
+qsharp = "required"
+external_tools = true

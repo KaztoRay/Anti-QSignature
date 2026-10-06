@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from anti_qsignature.fuzzer import run_policy_fuzz
-from anti_qsignature.scanner import discover_files, scan_sources
+from anti_qsignature.scanner import discover_files, fingerprint_bytecode, scan_sources
 
 
 class ScannerTests(unittest.TestCase):
@@ -21,6 +21,18 @@ class ScannerTests(unittest.TestCase):
     def test_reference_policy_fuzzer_has_no_counterexamples(self) -> None:
         report = run_policy_fuzz(1000, 7)
         self.assertEqual(report["invariant_failures"], 0)
+
+    def test_parallel_artifact_fingerprinting(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            artifact = root / "Example.json"
+            artifact.write_text(
+                '{"bytecode":{"object":"0x60006000"},"deployedBytecode":{"object":"0x6001"}}',
+                encoding="utf-8",
+            )
+            fingerprints = fingerprint_bytecode([artifact], root, jobs=2)
+            self.assertEqual(len(fingerprints), 2)
+            self.assertEqual({item["bytes"] for item in fingerprints}, {2, 4})
 
 
 if __name__ == "__main__":

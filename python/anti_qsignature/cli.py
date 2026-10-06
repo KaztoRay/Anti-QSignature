@@ -8,6 +8,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .config import load_project_config
 from .fuzzer import run_policy_fuzz
 from .models import SEVERITY_ORDER, ScanReport
 from .quantum import run_quantum_analysis
@@ -57,14 +58,21 @@ def parser() -> argparse.ArgumentParser:
     picker = value.add_mutually_exclusive_group()
     picker.add_argument("--pick-file", action="store_const", const="file", dest="pick", help="파일 선택 창 열기")
     picker.add_argument("--pick-dir", action="store_const", const="dir", dest="pick", help="프로젝트 폴더 선택 창 열기")
-    value.add_argument("--fuzz-cases", type=int, default=512, help="내장/Foundry 퍼징 실행 수")
+    value.add_argument("--config", help=".antiq.toml 경로; 기본값은 선택 프로젝트 루트")
+    value.add_argument("--fuzz-cases", type=int, help="내장/Foundry 퍼징 실행 수")
     value.add_argument("--seed", type=int, default=20261005, help="재현 가능한 내장 퍼징 시드")
-    value.add_argument("--qsharp", choices=["auto", "off", "required"], default="auto")
-    value.add_argument("--external-tools", action="store_true", help="격리 복사본에서 Forge와 Slither 실행")
+    value.add_argument("--qsharp", choices=["auto", "off", "required"])
+    value.add_argument(
+        "--external-tools",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="격리 복사본에서 Forge와 Slither 실행",
+    )
     value.add_argument("--jobs", type=int, default=0, help="병렬 스캔 작업 수; 0은 자동")
     value.add_argument("--exclude", action="append", default=[], help="제외할 glob 패턴; 반복 지정 가능")
+    value.add_argument("--ignore-rule", action="append", default=[], help="수용할 규칙 ID; 반복 지정 가능")
     value.add_argument("--baseline", help="이전 JSON 보고서와 신규/해결 항목 비교")
-    value.add_argument("--fail-on", choices=list(SEVERITY_ORDER), default="high", help="CI 실패 기준")
+    value.add_argument("--fail-on", choices=list(SEVERITY_ORDER), help="CI 실패 기준")
     value.add_argument("--json", dest="json_path", default="reports/antiq-report.json")
     value.add_argument("--html", dest="html_path", default="reports/antiq-report.html")
     value.add_argument("--sarif", dest="sarif_path", default="reports/antiq-report.sarif")
@@ -96,8 +104,18 @@ def main(argv: list[str] | None = None) -> int:
         total_started = time.perf_counter()
         target = choose_target(args.target, args.pick)
         root = target if target.is_dir() else target.parent
+        config_path = Path(args.config).expanduser().resolve() if args.config else root / ".antiq.toml"
+        config = load_project_config(config_path)
+        exclusions = [*config.exclude, *args.exclude]
+        ignored_rules = set(config.ignore_rules) | set(args.ignore_rule)
+        fuzz_cases = max(args.fuzz_cases or config.fuzz_cases or 512, 1)
+        qsharp_mode = args.qsharp or config.qsharp or "auto"
+        external_tools = args.external_tools if args.external_tools is not None else bool(config.external_tools)
+        fail_on = args.fail_on or config.fail_on
+        if fail_on not in SEVERITY_ORDER:
+            raise ValueError(f"Invalid fail_on severity in {config_path}: {fail_on}")
         phase = time.perf_counter()
-        files = discover_files(target, args.exclude)
+        files = discover_files(target, exclusions)
         report = ScanReport(
             target=str(target),
             generated_at=datetime.now(timezone.utc).isoformat(),
@@ -111,23 +129,30 @@ def main(argv: list[str] | None = None) -> int:
         report.findings = scan_sources(files, root, args.jobs or None)
         report.metrics["static_scan_ms"] = round((time.perf_counter() - phase) * 1000)
         phase = time.perf_counter()
-        report.bytecode_fingerprints = fingerprint_bytecode(files, root)
+        report.bytecode_fingerprints = fingerprint_bytecode(files, root, args.jobs or None)
         report.findings.extend(bytecode_findings(report.bytecode_fingerprints))
+        before_suppression = len(report.findings)
+        report.findings = [item for item in report.findings if item.rule_id not in ignored_rules]
+        report.metrics["suppressed_findings"] = before_suppression - len(report.findings)
+        report.metrics["config_path"] = str(config_path) if config_path.exists() else None
         report.metrics["bytecode_ms"] = round((time.perf_counter() - phase) * 1000)
         phase = time.perf_counter()
-        report.policy_fuzz = run_policy_fuzz(max(args.fuzz_cases, 1), args.seed)
+        report.policy_fuzz = run_policy_fuzz(fuzz_cases, args.seed)
         report.metrics["policy_fuzz_ms"] = round((time.perf_counter() - phase) * 1000)
         repository_root = Path(__file__).resolve().parents[2]
         phase = time.perf_counter()
         report.quantum = run_quantum_analysis(
             repository_root,
-            mode=args.qsharp,
+            mode=qsharp_mode,
             finding_rule_ids={item.rule_id for item in report.findings},
         )
         report.metrics["qsharp_ms"] = round((time.perf_counter() - phase) * 1000)
-        if args.external_tools:
-            report.tools = run_isolated_tools(target, max(args.fuzz_cases, 1))
+        if external_tools:
+            report.tools = run_isolated_tools(target, fuzz_cases)
             report.findings.extend(normalized_tool_findings(report.tools))
+            before_external_suppression = len(report.findings)
+            report.findings = [item for item in report.findings if item.rule_id not in ignored_rules]
+            report.metrics["suppressed_findings"] += before_external_suppression - len(report.findings)
         apply_baseline(report, args.baseline)
         report.sort_findings()
         report.metrics["duration_ms"] = round((time.perf_counter() - total_started) * 1000)
@@ -154,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
             "sarif_report": str(sarif_output),
             "markdown_report": str(markdown_output),
         }, indent=2, ensure_ascii=False))
-        threshold = SEVERITY_ORDER[args.fail_on]
+        threshold = SEVERITY_ORDER[fail_on]
         should_fail = any(SEVERITY_ORDER.get(item.severity, 99) <= threshold for item in report.findings)
         return 2 if should_fail else 0
     except (FileNotFoundError, RuntimeError, ValueError, json.JSONDecodeError) as exc:

@@ -260,36 +260,51 @@ def _bytecode_values(node: object, prefix: str = "") -> Iterable[tuple[str, str]
             yield from _bytecode_values(value, f"{prefix}[{index}]")
 
 
-def fingerprint_bytecode(files: Iterable[Path], root: Path) -> list[dict[str, object]]:
+def _fingerprint_artifact(path: Path, root: Path) -> list[dict[str, object]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
     fingerprints: list[dict[str, object]] = []
-    seen: set[tuple[str, str]] = set()
-    for path in files:
-        if path.suffix.lower() != ".json":
+    seen: set[str] = set()
+    for location, value in _bytecode_values(data):
+        normalized = value.removeprefix("0x")
+        if not normalized or not re.fullmatch(r"[0-9a-fA-F]+", normalized) or len(normalized) % 2:
             continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        raw = bytes.fromhex(normalized)
+        digest = hashlib.sha256(raw).hexdigest()
+        if digest in seen:
             continue
-        for location, value in _bytecode_values(data):
-            normalized = value.removeprefix("0x")
-            if not normalized or not re.fullmatch(r"[0-9a-fA-F]+", normalized) or len(normalized) % 2:
-                continue
-            raw = bytes.fromhex(normalized)
-            digest = hashlib.sha256(raw).hexdigest()
-            identity = (str(path), digest)
-            if identity in seen:
-                continue
-            seen.add(identity)
-            fingerprints.append(
-                {
-                    "path": relative_display(path, root),
-                    "location": location,
-                    "sha256": digest,
-                    "bytes": len(raw),
-                    "eip170_limit_exceeded": "deployedBytecode" in location and len(raw) > EIP170_CODE_SIZE,
-                }
-            )
+        seen.add(digest)
+        fingerprints.append(
+            {
+                "path": relative_display(path, root),
+                "location": location,
+                "sha256": digest,
+                "bytes": len(raw),
+                "eip170_limit_exceeded": "deployedBytecode" in location and len(raw) > EIP170_CODE_SIZE,
+            }
+        )
     return fingerprints
+
+
+def fingerprint_bytecode(
+    files: Iterable[Path], root: Path, jobs: int | None = None
+) -> list[dict[str, object]]:
+    artifacts = [path for path in files if path.suffix.lower() == ".json"]
+    workers = jobs or min(16, (os.cpu_count() or 2) + 2)
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        batches = pool.map(lambda path: _fingerprint_artifact(path, root), artifacts)
+    fingerprints = [item for batch in batches for item in batch]
+    seen: set[tuple[str, str]] = set()
+    unique: list[dict[str, object]] = []
+    for item in fingerprints:
+        identity = (str(item["path"]), str(item["sha256"]))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        unique.append(item)
+    return unique
 
 
 def bytecode_findings(fingerprints: Iterable[dict[str, object]]) -> list[Finding]:
