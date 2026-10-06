@@ -68,6 +68,15 @@ class QuantumHarnessTests(unittest.TestCase):
         self.assertEqual(hardened_violations, 0)
         self.assertGreater(mutant_violations, 0)
 
+    def test_account_abstraction_harness_binds_entrypoint_and_hybrid_signatures(self) -> None:
+        checked, accepted, hardened_violations, mutant_violations = self.qsharp.eval(
+            "AntiQSignature.RunAccountAbstractionHarness()"
+        )
+        self.assertEqual(checked, 256)
+        self.assertEqual(accepted, 1)
+        self.assertEqual(hardened_violations, 0)
+        self.assertGreater(mutant_violations, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

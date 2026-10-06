@@ -51,6 +51,9 @@ def run_quantum_analysis(
         sequence_checked, sequence_hardened, sequence_mutant = qsharp.eval(
             "AntiQSignature.RunTransactionSequenceHarness()"
         )
+        aa_checked, aa_accepted, aa_hardened, aa_mutant = qsharp.eval(
+            "AntiQSignature.RunAccountAbstractionHarness()"
+        )
         feature_rules = ["AQ001", "AQ002", "AQ003", "AQ007", "AQ008", "AQ009", "AQ015", "AQ011"]
         active_rules = finding_rule_ids or set()
         feature_mask = sum(1 << index for index, rule in enumerate(feature_rules) if rule in active_rules)
@@ -66,6 +69,8 @@ def run_quantum_analysis(
             and domain_mutant > 0
             and sequence_hardened == 0
             and sequence_mutant > 0
+            and aa_hardened == 0
+            and aa_mutant > 0
         )
         if not harnesses_valid:
             raise RuntimeError(
@@ -138,7 +143,14 @@ def run_quantum_analysis(
                     "mutant_violations_detected": sequence_mutant,
                     "differential_validation": "passed",
                 },
-                "total_qsharp_states_verified": states_checked + upgrade_checked + domain_checked + sequence_checked,
+                "account_abstraction_harness": {
+                    "states_checked": aa_checked,
+                    "hardened_accepted_states": aa_accepted,
+                    "hardened_violations": aa_hardened,
+                    "mutant_violations_detected": aa_mutant,
+                    "differential_validation": "passed",
+                },
+                "total_qsharp_states_verified": states_checked + upgrade_checked + domain_checked + sequence_checked + aa_checked,
                 "grover_attack_harness": {
                     "expression": expression,
                     "shots": 32,

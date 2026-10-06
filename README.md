@@ -19,6 +19,8 @@ Q# 양자 위협 분석, Solidity 정적 취약점 검사, 격리된 Foundry/Sli
 - 코드 무결성 attestation registry와 정책 kernel Solidity 예제
 - 실제 실행 가능한 ECDSA + Merkle-Lamport 하이브리드 지갑 프로토타입
 - Q# 트랜잭션 순서 하네스로 Lamport leaf 재사용과 동결 우회 전수검증
+- ERC-4337 `validateUserOp` 계정과 교체 가능한 PQ verifier 인터페이스
+- Q# ERC-4337 EntryPoint·sender·도메인·이중서명 256상태 전수검증
 
 > 정적 규칙의 결과는 취약점 확정이 아니라 검토 후보입니다. 실제 배포 전에는 수동 감사와 체인별 PQ verifier 검증이 필요합니다.
 
@@ -100,4 +102,4 @@ PYTHONPATH=python .venv/bin/python -m unittest discover -s tests
 
 ## 중요한 범위 제한
 
-Q#은 EVM 내부에서 실행되지 않습니다. 이 프로젝트에서 Q#은 공격자 모델, Grover 상태 탐색, 향후 Shor 자원 추정 및 정책 탐색을 담당합니다. 실제 온체인 승인은 Solidity verifier 또는 체인/L2의 PQ precompile이 담당해야 합니다. 현재 `AntiQPolicy`는 검증 가능한 정책 kernel이며, ML-DSA/SLH-DSA verifier와 완전한 ERC-4337 계정은 다음 개발 단계입니다.
+Q#은 EVM 내부에서 실행되지 않습니다. 이 프로젝트에서 Q#은 공격자 모델, Grover 상태 탐색, 정책·업그레이드·트랜잭션 순서·ERC-4337 검증을 담당합니다. 실제 온체인 승인은 Solidity verifier 또는 체인/L2의 PQ precompile이 담당해야 합니다. `AntiQ4337Account`는 ERC-4337 계정 인터페이스와 crypto-agile PQ verifier 경계를 구현하지만, 실제 운영 배포 전에는 공식 EntryPoint 통합 테스트와 표준 ML-DSA/SLH-DSA verifier 또는 precompile adapter가 필요합니다.
