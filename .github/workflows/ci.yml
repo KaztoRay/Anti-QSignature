@@ -1,4 +1,4 @@
-name: antiq-security
+name: anti-quantum-security
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - name: Install Anti-QSignature and QDK
+      - name: Install Anti-Quantum and QDK
         run: pip install -e .
       - name: Run Python and Q# harness tests
         run: python -m unittest discover -s tests -v

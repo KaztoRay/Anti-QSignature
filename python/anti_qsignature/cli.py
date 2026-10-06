@@ -35,7 +35,7 @@ def _gui_pick(kind: str) -> str:
         root.destroy()
         return selected
     except Exception as exc:
-        print(f"GUI 선택기를 열 수 없어 터미널 입력으로 전환합니다: {exc}", file=sys.stderr)
+        print(f"File picker unavailable; switching to terminal input: {exc}", file=sys.stderr)
         return ""
 
 
@@ -45,34 +45,40 @@ def choose_target(raw: str | None, pick: str | None = None) -> Path:
     else:
         entered = _gui_pick(pick) if pick else ""
         if not entered:
-            entered = input("검사할 Solidity 파일 또는 프로젝트 디렉터리 경로: ").strip()
+            entered = input("Solidity file or project directory to scan: ").strip()
+        if not entered:
+            raise ValueError("A scan target is required.")
         target = Path(entered).expanduser()
     if not target.exists():
-        raise FileNotFoundError(f"대상 경로를 찾을 수 없습니다: {target}")
+        raise FileNotFoundError(f"Scan target does not exist: {target}")
+    if not target.is_file() and not target.is_dir():
+        raise ValueError(f"Scan target must be a file or directory: {target}")
+    if target.is_file() and target.suffix.lower() not in {".sol", ".vy", ".yul", ".json"}:
+        raise ValueError(f"Unsupported scan target file: {target}")
     return target.resolve()
 
 
 def parser() -> argparse.ArgumentParser:
-    value = argparse.ArgumentParser(prog="antiq", description="Q# 기반 스마트 컨트랙트 보안 검사")
-    value.add_argument("target", nargs="?", help="Solidity 파일 또는 프로젝트 경로; 생략하면 대화형 선택")
+    value = argparse.ArgumentParser(prog="antiq", description="Anti-Quantum smart contract security scanner")
+    value.add_argument("target", nargs="?", help="Solidity file or project path; prompts if omitted")
     picker = value.add_mutually_exclusive_group()
-    picker.add_argument("--pick-file", action="store_const", const="file", dest="pick", help="파일 선택 창 열기")
-    picker.add_argument("--pick-dir", action="store_const", const="dir", dest="pick", help="프로젝트 폴더 선택 창 열기")
-    value.add_argument("--config", help=".antiq.toml 경로; 기본값은 선택 프로젝트 루트")
-    value.add_argument("--fuzz-cases", type=int, help="내장/Foundry 퍼징 실행 수")
-    value.add_argument("--seed", type=int, default=20261005, help="재현 가능한 내장 퍼징 시드")
+    picker.add_argument("--pick-file", action="store_const", const="file", dest="pick", help="Open file picker")
+    picker.add_argument("--pick-dir", action="store_const", const="dir", dest="pick", help="Open directory picker")
+    value.add_argument("--config", help="Path to .antiq.toml; defaults to the target project root")
+    value.add_argument("--fuzz-cases", type=int, help="Built-in and Foundry fuzz case count")
+    value.add_argument("--seed", type=int, default=20261005, help="Reproducible built-in fuzz seed")
     value.add_argument("--qsharp", choices=["auto", "off", "required"])
     value.add_argument(
         "--external-tools",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="격리 복사본에서 Forge와 Slither 실행",
+        help="Run Forge and Slither on an isolated copy",
     )
-    value.add_argument("--jobs", type=int, default=0, help="병렬 스캔 작업 수; 0은 자동")
-    value.add_argument("--exclude", action="append", default=[], help="제외할 glob 패턴; 반복 지정 가능")
-    value.add_argument("--ignore-rule", action="append", default=[], help="수용할 규칙 ID; 반복 지정 가능")
-    value.add_argument("--baseline", help="이전 JSON 보고서와 신규/해결 항목 비교")
-    value.add_argument("--fail-on", choices=list(SEVERITY_ORDER), help="CI 실패 기준")
+    value.add_argument("--jobs", type=int, default=0, help="Parallel scan workers; 0 selects automatically")
+    value.add_argument("--exclude", action="append", default=[], help="Glob pattern to exclude; repeatable")
+    value.add_argument("--ignore-rule", action="append", default=[], help="Accepted rule ID; repeatable")
+    value.add_argument("--baseline", help="Previous JSON report for new and resolved finding comparison")
+    value.add_argument("--fail-on", choices=list(SEVERITY_ORDER), help="CI failure severity threshold")
     value.add_argument("--json", dest="json_path", default="reports/antiq-report.json")
     value.add_argument("--html", dest="html_path", default="reports/antiq-report.html")
     value.add_argument("--sarif", dest="sarif_path", default="reports/antiq-report.sarif")
@@ -108,8 +114,16 @@ def main(argv: list[str] | None = None) -> int:
         config = load_project_config(config_path)
         exclusions = [*config.exclude, *args.exclude]
         ignored_rules = set(config.ignore_rules) | set(args.ignore_rule)
-        fuzz_cases = max(args.fuzz_cases or config.fuzz_cases or 512, 1)
+        fuzz_cases = args.fuzz_cases if args.fuzz_cases is not None else (config.fuzz_cases or 512)
+        if fuzz_cases < 1:
+            raise ValueError("fuzz_cases must be at least 1")
+        if args.jobs < 0:
+            raise ValueError("jobs must be 0 or greater")
+        if args.seed < 0:
+            raise ValueError("seed must be 0 or greater")
         qsharp_mode = args.qsharp or config.qsharp or "auto"
+        if qsharp_mode not in {"auto", "off", "required"}:
+            raise ValueError(f"Invalid qsharp mode in {config_path}: {qsharp_mode}")
         external_tools = args.external_tools if args.external_tools is not None else bool(config.external_tools)
         fail_on = args.fail_on or config.fail_on
         if fail_on not in SEVERITY_ORDER:
