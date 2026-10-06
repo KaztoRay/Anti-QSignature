@@ -37,6 +37,26 @@ namespace AntiQSignature {
         return result;
     }
 
+    /// Builds the marked state from the scanner's real eight-bit risk mask,
+    /// rather than using a fixed demonstration oracle.
+    operation RunDynamicRiskGrover(registerSize : Int, targetMask : Int, iterations : Int) : Result[] {
+        use register = Qubit[registerSize];
+        ApplyToEach(H, register);
+        mutable zeroBitIndexes = [];
+        for index in 0..registerSize - 1 {
+            if not IsStateBitSet(targetMask, index) {
+                set zeroBitIndexes += [index];
+            }
+        }
+        for _ in 1..iterations {
+            MarkTargetState(register, zeroBitIndexes);
+            ReflectAttackState(register);
+        }
+        let result = MeasureEachZ(register);
+        ResetAll(register);
+        return result;
+    }
+
     /// One Grover oracle plus diffusion step, used for scalable QRE comparisons.
     operation EstimateAttackRound(registerSize : Int) : Unit {
         use register = Qubit[registerSize];

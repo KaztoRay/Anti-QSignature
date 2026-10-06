@@ -77,6 +77,33 @@ class QuantumHarnessTests(unittest.TestCase):
         self.assertEqual(hardened_violations, 0)
         self.assertGreater(mutant_violations, 0)
 
+    def test_key_rotation_harness_requires_current_hybrid_auth_and_epoch_advance(self) -> None:
+        checked, accepted, hardened_violations, mutant_violations = self.qsharp.eval(
+            "AntiQSignature.RunKeyRotationHarness()"
+        )
+        self.assertEqual(checked, 256)
+        self.assertEqual(accepted, 1)
+        self.assertEqual(hardened_violations, 0)
+        self.assertGreater(mutant_violations, 0)
+
+    def test_guardian_recovery_harness_requires_threshold_and_replay_protection(self) -> None:
+        checked, accepted, hardened_violations, mutant_violations = self.qsharp.eval(
+            "AntiQSignature.RunGuardianRecoveryHarness()"
+        )
+        self.assertEqual(checked, 256)
+        self.assertEqual(accepted, 4)
+        self.assertEqual(hardened_violations, 0)
+        self.assertGreater(mutant_violations, 0)
+
+    def test_dynamic_grover_harness_amplifies_scanner_risk_mask(self) -> None:
+        target_mask = 0b10100101
+        shots = self.qsharp.run(
+            f"AntiQSignature.RunDynamicRiskGrover(8, {target_mask}, 13)", shots=8
+        )
+        target = "[One, Zero, One, Zero, Zero, One, Zero, One]"
+        hits = sum(1 for shot in shots if str(shot) == target)
+        self.assertGreaterEqual(hits, 6)
+
 
 if __name__ == "__main__":
     unittest.main()

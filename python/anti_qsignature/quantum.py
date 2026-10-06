@@ -54,6 +54,12 @@ def run_quantum_analysis(
         aa_checked, aa_accepted, aa_hardened, aa_mutant = qsharp.eval(
             "AntiQSignature.RunAccountAbstractionHarness()"
         )
+        rotation_checked, rotation_accepted, rotation_hardened, rotation_mutant = qsharp.eval(
+            "AntiQSignature.RunKeyRotationHarness()"
+        )
+        recovery_checked, recovery_accepted, recovery_hardened, recovery_mutant = qsharp.eval(
+            "AntiQSignature.RunGuardianRecoveryHarness()"
+        )
         feature_rules = ["AQ001", "AQ002", "AQ003", "AQ007", "AQ008", "AQ009", "AQ015", "AQ011"]
         active_rules = finding_rule_ids or set()
         feature_mask = sum(1 << index for index, rule in enumerate(feature_rules) if rule in active_rules)
@@ -71,6 +77,10 @@ def run_quantum_analysis(
             and sequence_mutant > 0
             and aa_hardened == 0
             and aa_mutant > 0
+            and rotation_hardened == 0
+            and rotation_mutant > 0
+            and recovery_hardened == 0
+            and recovery_mutant > 0
         )
         if not harnesses_valid:
             raise RuntimeError(
@@ -82,6 +92,19 @@ def run_quantum_analysis(
         shots = qsharp.run(expression, shots=32)
         target = "[One, Zero, Zero, Zero, Zero, One, Zero]"
         marked_hits = sum(1 for shot in shots if str(shot) == target)
+
+        dynamic_register_size = len(feature_rules)
+        dynamic_iterations = max(1, round(math.pi / 4 * math.sqrt(2**dynamic_register_size)))
+        dynamic_expression = (
+            f"AntiQSignature.RunDynamicRiskGrover({dynamic_register_size}, "
+            f"{feature_mask}, {dynamic_iterations})"
+        )
+        dynamic_shots = qsharp.run(dynamic_expression, shots=32)
+        dynamic_target = "[" + ", ".join(
+            "One" if feature_mask & (1 << index) else "Zero"
+            for index in range(dynamic_register_size)
+        ) + "]"
+        dynamic_hits = sum(1 for shot in dynamic_shots if str(shot) == dynamic_target)
 
         resource_estimates: list[dict[str, Any]] = []
         with warnings.catch_warnings():
@@ -150,13 +173,38 @@ def run_quantum_analysis(
                     "mutant_violations_detected": aa_mutant,
                     "differential_validation": "passed",
                 },
-                "total_qsharp_states_verified": states_checked + upgrade_checked + domain_checked + sequence_checked + aa_checked,
+                "key_rotation_harness": {
+                    "states_checked": rotation_checked,
+                    "hardened_accepted_states": rotation_accepted,
+                    "hardened_violations": rotation_hardened,
+                    "mutant_violations_detected": rotation_mutant,
+                    "differential_validation": "passed",
+                },
+                "guardian_recovery_harness": {
+                    "states_checked": recovery_checked,
+                    "hardened_accepted_states": recovery_accepted,
+                    "hardened_violations": recovery_hardened,
+                    "mutant_violations_detected": recovery_mutant,
+                    "differential_validation": "passed",
+                },
+                "total_qsharp_states_verified": (
+                    states_checked + upgrade_checked + domain_checked + sequence_checked
+                    + aa_checked + rotation_checked + recovery_checked
+                ),
                 "grover_attack_harness": {
                     "expression": expression,
                     "shots": 32,
                     "target_state_hits": marked_hits,
                     "hit_rate": round(marked_hits / 32, 4),
                     "target_state": "owner + replayable nonce; PQ/code/guardian checks bypassed",
+                },
+                "dynamic_risk_grover_harness": {
+                    "expression": dynamic_expression,
+                    "shots": 32,
+                    "target_mask": feature_mask,
+                    "target_state_hits": dynamic_hits,
+                    "hit_rate": round(dynamic_hits / 32, 4),
+                    "target_state": dynamic_target,
                 },
                 "attack_round_resource_estimates": resource_estimates,
                 "resource_estimate_scope": "Q# policy attack rounds; not a secp256k1 Shor estimate",

@@ -9,21 +9,24 @@ import {IPQSignatureVerifier} from "./interfaces/IPQSignatureVerifier.sol";
 ///      should pin a reviewed verifier or a chain-native PQ precompile adapter.
 contract AntiQ4337Account is IAccount {
     uint256 internal constant SIG_VALIDATION_FAILED = 1;
-    uint256 internal constant SECP256K1N_DIV_2 =
-        0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
+    uint256 internal constant SECP256K1N_DIV_2 = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
 
     address public immutable entryPoint;
     address public immutable owner;
     IPQSignatureVerifier public immutable pqVerifier;
-    bytes32 public immutable pqKeyCommitment;
+    bytes32 public pqKeyCommitment;
+    uint32 public keyEpoch;
     uint32 public immutable codeEpoch;
     uint32 public immutable policyEpoch;
 
     error OnlyEntryPoint();
+    error OnlySelf();
     error ZeroAddress();
+    error InvalidKeyCommitment();
     error ExecutionFailed(bytes reason);
 
     event AccountCall(address indexed target, uint256 value, bytes4 selector);
+    event PQKeyRotated(bytes32 indexed previousCommitment, bytes32 indexed newCommitment, uint32 keyEpoch);
 
     constructor(
         address initialEntryPoint,
@@ -33,14 +36,13 @@ contract AntiQ4337Account is IAccount {
         uint32 initialCodeEpoch,
         uint32 initialPolicyEpoch
     ) {
-        if (
-            initialEntryPoint == address(0) || initialOwner == address(0)
-                || address(initialPqVerifier) == address(0)
-        ) revert ZeroAddress();
+        if (initialEntryPoint == address(0) || initialOwner == address(0) || address(initialPqVerifier) == address(0)) revert ZeroAddress();
+        if (initialPqKeyCommitment == bytes32(0)) revert InvalidKeyCommitment();
         entryPoint = initialEntryPoint;
         owner = initialOwner;
         pqVerifier = initialPqVerifier;
         pqKeyCommitment = initialPqKeyCommitment;
+        keyEpoch = 1;
         codeEpoch = initialCodeEpoch;
         policyEpoch = initialPolicyEpoch;
     }
@@ -53,25 +55,18 @@ contract AntiQ4337Account is IAccount {
     }
 
     function validationDigest(bytes32 userOpHash) public view returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                userOpHash,
-                block.chainid,
-                address(this),
-                entryPoint,
-                codeEpoch,
-                policyEpoch
-            )
-        );
+        return
+            keccak256(
+                abi.encode(userOpHash, block.chainid, address(this), entryPoint, codeEpoch, policyEpoch, keyEpoch)
+            );
     }
 
-    function validateUserOp(
-        PackedUserOperation calldata userOp,
-        bytes32 userOpHash,
-        uint256 missingAccountFunds
-    ) external onlyEntryPoint returns (uint256 validationData) {
-        (bytes memory classicalSignature, bytes memory quantumSignature) =
-            abi.decode(userOp.signature, (bytes, bytes));
+    function validateUserOp(PackedUserOperation calldata userOp, bytes32 userOpHash, uint256 missingAccountFunds)
+        external
+        onlyEntryPoint
+        returns (uint256 validationData)
+    {
+        (bytes memory classicalSignature, bytes memory quantumSignature) = abi.decode(userOp.signature, (bytes, bytes));
         bytes32 digest = validationDigest(userOpHash);
 
         bool classicalValid = _recover(digest, classicalSignature) == owner;
@@ -98,6 +93,21 @@ contract AntiQ4337Account is IAccount {
         return returned;
     }
 
+    /// @notice Rotates the PQ public-key commitment through an authorized
+    ///         EntryPoint operation that calls this account itself.
+    /// @dev Including keyEpoch in validationDigest invalidates signatures made
+    ///      for every previous key generation, even if a verifier is reused.
+    function rotatePQKey(bytes32 newCommitment) external {
+        if (msg.sender != address(this)) revert OnlySelf();
+        if (newCommitment == bytes32(0) || newCommitment == pqKeyCommitment) {
+            revert InvalidKeyCommitment();
+        }
+        bytes32 previousCommitment = pqKeyCommitment;
+        pqKeyCommitment = newCommitment;
+        keyEpoch += 1;
+        emit PQKeyRotated(previousCommitment, newCommitment, keyEpoch);
+    }
+
     function _recover(bytes32 digest, bytes memory signature) private pure returns (address signer) {
         if (signature.length != 65) return address(0);
         bytes32 r;
@@ -112,4 +122,3 @@ contract AntiQ4337Account is IAccount {
         signer = ecrecover(digest, v, r, s);
     }
 }
-

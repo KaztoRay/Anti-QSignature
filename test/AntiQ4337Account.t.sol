@@ -12,11 +12,7 @@ interface Vm4337 {
 }
 
 contract MockPQVerifier is IPQSignatureVerifier {
-    function verify(bytes32 digest, bytes calldata signature, bytes32 keyCommitment)
-        external
-        pure
-        returns (bool)
-    {
+    function verify(bytes32 digest, bytes calldata signature, bytes32 keyCommitment) external pure returns (bool) {
         return keccak256(signature) == keccak256(abi.encode(digest, keyCommitment));
     }
 }
@@ -57,9 +53,7 @@ contract AntiQ4337AccountTest {
     function setUp() public {
         entryPoint = new MockEntryPoint();
         verifier = new MockPQVerifier();
-        account = new AntiQ4337Account(
-            address(entryPoint), vm.addr(OWNER_KEY), verifier, PQ_COMMITMENT, 1, 1
-        );
+        account = new AntiQ4337Account(address(entryPoint), vm.addr(OWNER_KEY), verifier, PQ_COMMITMENT, 1, 1);
         receiver = new AccountReceiver();
     }
 
@@ -86,16 +80,36 @@ contract AntiQ4337AccountTest {
         account.validateUserOp(op, userOpHash, 0);
     }
 
-    function _operation(bytes32 userOpHash, bool validPQ)
-        internal
-        returns (PackedUserOperation memory op)
-    {
+    function test_AuthorizedSelfCallRotatesPQKeyAndInvalidatesOldSignature() public {
+        bytes32 userOpHash = keccak256("rotate-pq-key");
+        PackedUserOperation memory oldOperation = _operation(userOpHash, true);
+        require(entryPoint.validate(account, oldOperation, userOpHash) == 0, "rotation authorization failed");
+
+        bytes32 replacement = keccak256("pq-key-v2");
+        bytes memory rotationCall = abi.encodeCall(AntiQ4337Account.rotatePQKey, (replacement));
+        entryPoint.execute(account, address(account), rotationCall);
+
+        require(account.pqKeyCommitment() == replacement, "PQ commitment not rotated");
+        require(account.keyEpoch() == 2, "key epoch not advanced");
+        require(entryPoint.validate(account, oldOperation, userOpHash) == 1, "old-generation signature remained valid");
+    }
+
+    function test_DirectPQKeyRotationReverts() public {
+        vm.expectRevert(AntiQ4337Account.OnlySelf.selector);
+        account.rotatePQKey(keccak256("unauthorized-key"));
+    }
+
+    function test_ZeroInitialPQKeyCommitmentReverts() public {
+        vm.expectRevert(AntiQ4337Account.InvalidKeyCommitment.selector);
+        new AntiQ4337Account(address(entryPoint), vm.addr(OWNER_KEY), verifier, bytes32(0), 1, 1);
+    }
+
+    function _operation(bytes32 userOpHash, bool validPQ) internal returns (PackedUserOperation memory op) {
         bytes32 digest = account.validationDigest(userOpHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_KEY, digest);
         bytes memory classicalSignature = abi.encodePacked(r, s, v);
-        bytes memory quantumSignature = validPQ
-            ? abi.encode(digest, PQ_COMMITMENT)
-            : abi.encode(bytes32(uint256(digest) ^ 1), PQ_COMMITMENT);
+        bytes memory quantumSignature =
+            validPQ ? abi.encode(digest, PQ_COMMITMENT) : abi.encode(bytes32(uint256(digest) ^ 1), PQ_COMMITMENT);
         op.sender = address(account);
         op.nonce = 0;
         op.signature = abi.encode(classicalSignature, quantumSignature);

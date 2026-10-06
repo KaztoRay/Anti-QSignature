@@ -10,7 +10,7 @@ Q# 양자 위협 분석, Solidity 정적 취약점 검사, 격리된 Foundry/Sli
 - 소스 전체의 재현 가능한 manifest hash 생성
 - nonce 재사용, 미승인 호출, PQ 승인 누락, 고액 guardian 우회, codehash 변조 정책 퍼징
 - Q# Grover probe 실행 및 256비트 탐색 공간의 양자 보안 요약
-- Q# 지갑 정책 128상태, 업그레이드 정책 256상태, 서명 도메인 64상태 전수 검증
+- Q# 지갑·업그레이드·서명 도메인·ERC-4337·키 수명주기 정책 1,280상태 전수 검증
 - Q# hardened/mutant differential harness와 Grover 반례 증폭 검증
 - 7/12/16 큐비트 공격 라운드별 Quantum Resource Estimator 비교
 - 선택한 프로젝트를 임시 디렉터리로 복사한 뒤 Forge fuzz와 Slither 실행
@@ -21,6 +21,9 @@ Q# 양자 위협 분석, Solidity 정적 취약점 검사, 격리된 Foundry/Sli
 - Q# 트랜잭션 순서 하네스로 Lamport leaf 재사용과 동결 우회 전수검증
 - ERC-4337 `validateUserOp` 계정과 교체 가능한 PQ verifier 인터페이스
 - Q# ERC-4337 EntryPoint·sender·도메인·이중서명 256상태 전수검증
+- `keyEpoch` 서명 도메인과 자기호출 제한을 적용한 PQ 키 회전 및 구세대 서명 폐기
+- Q# PQ 키 회전·2-of-3 가디언 복구 정책 differential harness
+- 실제 스캔 위험 비트마스크를 oracle로 구성하는 동적 Q# Grover 탐색
 
 > 정적 규칙의 결과는 취약점 확정이 아니라 검토 후보입니다. 실제 배포 전에는 수동 감사와 체인별 PQ verifier 검증이 필요합니다.
 
@@ -102,4 +105,4 @@ PYTHONPATH=python .venv/bin/python -m unittest discover -s tests
 
 ## 중요한 범위 제한
 
-Q#은 EVM 내부에서 실행되지 않습니다. 이 프로젝트에서 Q#은 공격자 모델, Grover 상태 탐색, 정책·업그레이드·트랜잭션 순서·ERC-4337 검증을 담당합니다. 실제 온체인 승인은 Solidity verifier 또는 체인/L2의 PQ precompile이 담당해야 합니다. `AntiQ4337Account`는 ERC-4337 계정 인터페이스와 crypto-agile PQ verifier 경계를 구현하지만, 실제 운영 배포 전에는 공식 EntryPoint 통합 테스트와 표준 ML-DSA/SLH-DSA verifier 또는 precompile adapter가 필요합니다.
+Q#은 EVM 내부에서 실행되지 않습니다. 이 프로젝트에서 Q#은 공격자 모델, 동적 Grover 상태 탐색, 정책·업그레이드·트랜잭션 순서·ERC-4337·키 회전·가디언 복구 검증을 담당합니다. 실제 온체인 승인은 Solidity verifier 또는 체인/L2의 PQ precompile이 담당해야 합니다. `AntiQ4337Account`는 ERC-4337 계정 인터페이스, crypto-agile PQ verifier 경계, PQ 키 회전을 구현합니다. 가디언 복구는 현재 Q# 정책 모델이며 아직 온체인 복구 모듈은 아닙니다. 실제 운영 배포 전에는 공식 EntryPoint 통합 테스트와 표준 ML-DSA/SLH-DSA verifier 또는 precompile adapter가 필요합니다.
